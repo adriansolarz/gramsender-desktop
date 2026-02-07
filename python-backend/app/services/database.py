@@ -13,7 +13,7 @@ import base64
 import json
 from datetime import datetime
 
-from ..config import KEY_FILE, STORAGE_MODE, SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, SUPABASE_ANON_KEY, SUPABASE_USER_ID
+from ..config import KEY_FILE, STORAGE_MODE, SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, SUPABASE_ANON_KEY, get_user_id
 
 class DatabaseService:
     """Service layer for Supabase database operations with multi-tenant support"""
@@ -42,8 +42,8 @@ class DatabaseService:
         DatabaseService._client = self.client
         DatabaseService._instance = self
         
-        # Set user_id from parameter, config, or environment
-        self._user_id = user_id or SUPABASE_USER_ID or os.getenv("SUPABASE_USER_ID")
+        # Set user_id from parameter, or dynamically from config/environment
+        self._user_id = user_id or get_user_id()
         print(f"[DatabaseService] User ID: {self._user_id[:8] if self._user_id else 'not set'}...")
     
     @classmethod
@@ -58,7 +58,9 @@ class DatabaseService:
         self._user_id = user_id
     
     def get_user_id(self) -> Optional[str]:
-        """Get the current user_id"""
+        """Get the current user_id - refreshes from env if not set"""
+        if not self._user_id:
+            self._user_id = get_user_id()
         return self._user_id
     
     def get_encryption_key(self) -> bytes:

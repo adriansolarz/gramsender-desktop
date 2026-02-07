@@ -15,7 +15,12 @@ SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS
 SUPABASE_SERVICE_ROLE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh3cnhuYnZudHFjeHNhb3hmZGZnIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3MDM1NjUxNSwiZXhwIjoyMDg1OTMyNTE1fQ.HNJ2xkLH49-j8DOp5E4PNy0hbWD4YNOPeTq5_HL3t8g")
 
 # User ID - set by Electron after login
+# Note: This is read dynamically in database.py since it may be set after import
 SUPABASE_USER_ID = os.getenv("SUPABASE_USER_ID", "")
+
+def get_user_id():
+    """Get user ID - reads from environment each time for dynamic updates"""
+    return os.getenv("SUPABASE_USER_ID", "") or SUPABASE_USER_ID
 
 # File paths (relative to app location)
 _ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))

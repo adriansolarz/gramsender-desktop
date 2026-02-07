@@ -7,7 +7,7 @@ import threading
 from datetime import datetime
 from typing import Callable, Dict, Set
 
-from .config import STORAGE_MODE
+from .config import STORAGE_MODE, get_user_id
 
 
 def run_campaign_poller(broadcast_fn: Callable[[dict], None], poll_interval: int = 10):
@@ -41,6 +41,18 @@ def run_campaign_poller(broadcast_fn: Callable[[dict], None], poll_interval: int
             db = DatabaseService.get_instance()
             worker_manager = WorkerManager.get_instance()
             
+            # Ensure user_id is set from environment (may have changed after login)
+            current_user_id = get_user_id()
+            if current_user_id and db.get_user_id() != current_user_id:
+                print(f"[CampaignPoller] Updating user_id to: {current_user_id[:8]}...")
+                db.set_user_id(current_user_id)
+            
+            if not db.get_user_id():
+                if poll_count % 6 == 0:
+                    print("[CampaignPoller] Waiting for user login (user_id not set)...")
+                time.sleep(poll_interval)
+                continue
+            
             # Get all campaigns with status 'running'
             campaigns = db.get_campaigns()
             running_campaigns = {
@@ -60,9 +72,11 @@ def run_campaign_poller(broadcast_fn: Callable[[dict], None], poll_interval: int
             
             # Get assignments to know which accounts are assigned to which campaigns
             assignments = db.get_assignments()
+            print(f"[CampaignPoller] Found {len(assignments)} assignments: {list(assignments.keys())}")
             
             # Get all accounts with credentials
             accounts = db.get_accounts()
+            print(f"[CampaignPoller] Found {len(accounts)} accounts: {list(accounts.keys())}")
             
             # Get currently active workers to avoid duplicates
             current_workers = worker_manager.get_all_workers()
