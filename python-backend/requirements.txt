@@ -1,0 +1,14 @@
+fastapi>=0.115.0
+uvicorn[standard]>=0.32.0
+websockets>=12.0
+python-multipart>=0.0.9
+pydantic>=2.9.0
+instagrapi>=2.0.0,<3.0.0
+cryptography>=41.0.7
+requests>=2.31.0
+python-dotenv>=1.0.0
+PySocks>=1.7.1
+supabase>=2.0.0
+pytz
+# Optional: httpcloak for browser-identical TLS/HTTP fingerprinting (set HTTPCLOAK_ENABLED=true)
+# pip install httpcloak  # or see https://github.com/sardanioss/httpcloak

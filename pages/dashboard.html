@@ -1,0 +1,446 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>GramSender - Dashboard</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+      background: #0f172a;
+      min-height: 100vh;
+      color: #f8fafc;
+    }
+    
+    .app-container {
+      display: flex;
+      flex-direction: column;
+      min-height: 100vh;
+    }
+    
+    /* Header */
+    .header {
+      background: rgba(30, 41, 59, 0.8);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+      padding: 16px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    
+    .header-left {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    
+    .logo-icon {
+      width: 36px;
+      height: 36px;
+      background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    
+    .logo-icon svg {
+      width: 22px;
+      height: 22px;
+      color: white;
+    }
+    
+    .logo-text {
+      font-size: 20px;
+      font-weight: 700;
+      color: white;
+    }
+    
+    .header-right {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+    
+    .user-email {
+      color: #94a3b8;
+      font-size: 14px;
+    }
+    
+    .logout-btn {
+      padding: 8px 16px;
+      background: rgba(255, 255, 255, 0.1);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 6px;
+      color: #f8fafc;
+      font-size: 14px;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    
+    .logout-btn:hover {
+      background: rgba(255, 255, 255, 0.15);
+    }
+    
+    /* Main content */
+    .main-content {
+      flex: 1;
+      padding: 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 24px;
+    }
+    
+    /* Status Card */
+    .status-card {
+      background: rgba(30, 41, 59, 0.6);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 12px;
+      padding: 24px;
+    }
+    
+    .status-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 20px;
+    }
+    
+    .status-title {
+      font-size: 18px;
+      font-weight: 600;
+    }
+    
+    .status-badge {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 12px;
+      border-radius: 20px;
+      font-size: 13px;
+      font-weight: 500;
+    }
+    
+    .status-badge.running {
+      background: rgba(34, 197, 94, 0.1);
+      color: #4ade80;
+    }
+    
+    .status-badge.stopped {
+      background: rgba(239, 68, 68, 0.1);
+      color: #f87171;
+    }
+    
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+    }
+    
+    .status-dot.running {
+      background: #4ade80;
+      animation: pulse 2s infinite;
+    }
+    
+    .status-dot.stopped {
+      background: #f87171;
+    }
+    
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+    
+    .control-buttons {
+      display: flex;
+      gap: 12px;
+    }
+    
+    .control-btn {
+      padding: 12px 24px;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+      border: none;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    
+    .control-btn.start {
+      background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%);
+      color: white;
+    }
+    
+    .control-btn.start:hover {
+      box-shadow: 0 4px 12px rgba(34, 197, 94, 0.4);
+    }
+    
+    .control-btn.stop {
+      background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+      color: white;
+    }
+    
+    .control-btn.stop:hover {
+      box-shadow: 0 4px 12px rgba(239, 68, 68, 0.4);
+    }
+    
+    .control-btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    
+    /* Info cards */
+    .info-cards {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 16px;
+    }
+    
+    .info-card {
+      background: rgba(30, 41, 59, 0.6);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 12px;
+      padding: 20px;
+    }
+    
+    .info-card-label {
+      font-size: 13px;
+      color: #94a3b8;
+      margin-bottom: 4px;
+    }
+    
+    .info-card-value {
+      font-size: 24px;
+      font-weight: 600;
+    }
+    
+    /* Logs section */
+    .logs-section {
+      flex: 1;
+      background: rgba(30, 41, 59, 0.6);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 12px;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    
+    .logs-header {
+      padding: 16px 20px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+      font-size: 16px;
+      font-weight: 600;
+    }
+    
+    .logs-content {
+      flex: 1;
+      padding: 16px;
+      overflow-y: auto;
+      font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+      font-size: 13px;
+      line-height: 1.5;
+      background: rgba(15, 23, 42, 0.6);
+    }
+    
+    .log-entry {
+      margin-bottom: 4px;
+      word-break: break-all;
+    }
+    
+    .log-entry.info {
+      color: #94a3b8;
+    }
+    
+    .log-entry.success {
+      color: #4ade80;
+    }
+    
+    .log-entry.error {
+      color: #f87171;
+    }
+    
+    .log-entry .timestamp {
+      color: #64748b;
+      margin-right: 8px;
+    }
+    
+    /* Web dashboard link */
+    .web-link {
+      text-align: center;
+      padding: 16px;
+      background: rgba(59, 130, 246, 0.1);
+      border: 1px solid rgba(59, 130, 246, 0.2);
+      border-radius: 8px;
+    }
+    
+    .web-link a {
+      color: #60a5fa;
+      text-decoration: none;
+      font-weight: 500;
+    }
+    
+    .web-link a:hover {
+      text-decoration: underline;
+    }
+  </style>
+</head>
+<body>
+  <div class="app-container">
+    <header class="header">
+      <div class="header-left">
+        <div class="logo-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="2" y="2" width="20" height="20" rx="5" ry="5"></rect>
+            <path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"></path>
+            <line x1="17.5" y1="6.5" x2="17.51" y2="6.5"></line>
+          </svg>
+        </div>
+        <span class="logo-text">GramSender</span>
+      </div>
+      <div class="header-right">
+        <span class="user-email" id="user-email">Loading...</span>
+        <button class="logout-btn" id="logout-btn">Sign Out</button>
+      </div>
+    </header>
+    
+    <main class="main-content">
+      <div class="status-card">
+        <div class="status-header">
+          <h2 class="status-title">DM Sender Status</h2>
+          <div class="status-badge stopped" id="status-badge">
+            <span class="status-dot stopped" id="status-dot"></span>
+            <span id="status-text">Stopped</span>
+          </div>
+        </div>
+        <div class="control-buttons">
+          <button class="control-btn start" id="start-btn">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+            Start Sender
+          </button>
+          <button class="control-btn stop" id="stop-btn" disabled>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12"/></svg>
+            Stop Sender
+          </button>
+        </div>
+      </div>
+      
+      <div class="web-link">
+        <p>Manage campaigns, accounts, and view analytics on the web dashboard:</p>
+        <a href="https://app.gramsender.com/dashboard" target="_blank">Open Web Dashboard →</a>
+      </div>
+      
+      <div class="logs-section">
+        <div class="logs-header">Activity Logs</div>
+        <div class="logs-content" id="logs-content">
+          <div class="log-entry info">
+            <span class="timestamp">[--:--:--]</span>
+            Ready to start. Click "Start Sender" to begin.
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+  
+  <script type="module">
+    import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
+    
+    let supabase;
+    let currentUser = null;
+    let isRunning = false;
+    
+    // UI Elements
+    const userEmailEl = document.getElementById('user-email');
+    const logoutBtn = document.getElementById('logout-btn');
+    const startBtn = document.getElementById('start-btn');
+    const stopBtn = document.getElementById('stop-btn');
+    const statusBadge = document.getElementById('status-badge');
+    const statusDot = document.getElementById('status-dot');
+    const statusText = document.getElementById('status-text');
+    const logsContent = document.getElementById('logs-content');
+    
+    function addLog(message, type = 'info') {
+      const now = new Date();
+      const timestamp = now.toTimeString().split(' ')[0];
+      const entry = document.createElement('div');
+      entry.className = `log-entry ${type}`;
+      entry.innerHTML = `<span class="timestamp">[${timestamp}]</span>${message}`;
+      logsContent.appendChild(entry);
+      logsContent.scrollTop = logsContent.scrollHeight;
+    }
+    
+    function updateStatus(running) {
+      isRunning = running;
+      if (running) {
+        statusBadge.className = 'status-badge running';
+        statusDot.className = 'status-dot running';
+        statusText.textContent = 'Running';
+        startBtn.disabled = true;
+        stopBtn.disabled = false;
+      } else {
+        statusBadge.className = 'status-badge stopped';
+        statusDot.className = 'status-dot stopped';
+        statusText.textContent = 'Stopped';
+        startBtn.disabled = false;
+        stopBtn.disabled = true;
+      }
+    }
+    
+    async function init() {
+      const config = await window.electronAPI.getConfig();
+      supabase = createClient(config.supabaseUrl, config.supabaseAnonKey);
+      
+      // Get current user
+      const session = await window.electronAPI.getSavedSession();
+      if (session && session.user) {
+        currentUser = session.user;
+        userEmailEl.textContent = currentUser.email;
+        addLog(`Logged in as ${currentUser.email}`, 'success');
+      }
+      
+      // Check backend status
+      const backendRunning = await window.electronAPI.getBackendStatus();
+      updateStatus(backendRunning);
+      
+      // Listen for Python logs
+      window.electronAPI.onPythonLog((data) => {
+        addLog(data.trim(), 'info');
+      });
+      
+      window.electronAPI.onPythonError((data) => {
+        addLog(data.trim(), 'error');
+      });
+    }
+    
+    // Event listeners
+    logoutBtn.addEventListener('click', async () => {
+      await window.electronAPI.logout();
+    });
+    
+    startBtn.addEventListener('click', async () => {
+      if (!currentUser) return;
+      addLog('Starting DM sender...', 'info');
+      await window.electronAPI.startBackend(currentUser.id);
+      updateStatus(true);
+      addLog('DM sender started successfully!', 'success');
+    });
+    
+    stopBtn.addEventListener('click', async () => {
+      addLog('Stopping DM sender...', 'info');
+      await window.electronAPI.stopBackend();
+      updateStatus(false);
+      addLog('DM sender stopped.', 'info');
+    });
+    
+    init();
+  </script>
+</body>
+</html>
