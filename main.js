@@ -105,6 +105,9 @@ function createWindow() {
     if (savedSession && savedSession.access_token) {
       currentUser = savedSession.user;
       pageToLoad = path.join(__dirname, 'pages', 'dashboard.html');
+      // Auto-start backend for returning users
+      log(`Auto-starting backend for user: ${savedSession.user.id}`);
+      startPythonBackend(savedSession.user.id);
     } else {
       pageToLoad = path.join(__dirname, 'pages', 'login.html');
     }
