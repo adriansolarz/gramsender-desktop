@@ -334,8 +334,23 @@
       </div>
       
       <div class="web-link">
-        <p>Manage campaigns, accounts, and view analytics on the web dashboard:</p>
-        <a href="https://app.gramsender.com/dashboard" target="_blank">Open Web Dashboard →</a>
+        <p><strong>How it works:</strong> Create campaigns and assign accounts on the web dashboard. When you click "Start Campaign" there, this app automatically picks it up and starts sending DMs.</p>
+        <a href="https://app.gramsender.com/campaigns" target="_blank">Open Web Dashboard →</a>
+      </div>
+      
+      <div class="info-cards">
+        <div class="info-card">
+          <div class="info-card-label">Status</div>
+          <div class="info-card-value" id="poller-status">Checking...</div>
+        </div>
+        <div class="info-card">
+          <div class="info-card-label">Active Workers</div>
+          <div class="info-card-value" id="active-workers">0</div>
+        </div>
+        <div class="info-card">
+          <div class="info-card-label">Messages Sent</div>
+          <div class="info-card-value" id="messages-sent">0</div>
+        </div>
       </div>
       
       <div class="logs-section">
@@ -430,7 +445,8 @@
       addLog('Starting DM sender...', 'info');
       await window.electronAPI.startBackend(currentUser.id);
       updateStatus(true);
-      addLog('DM sender started successfully!', 'success');
+      addLog('DM sender started! It will automatically process campaigns marked as "Running" on the web dashboard.', 'success');
+      addLog('To start sending: 1) Add accounts on web dashboard 2) Create campaign 3) Assign accounts 4) Click "Start" on campaign', 'info');
     });
     
     stopBtn.addEventListener('click', async () => {
@@ -438,6 +454,68 @@
       await window.electronAPI.stopBackend();
       updateStatus(false);
       addLog('DM sender stopped.', 'info');
+    });
+    
+    // Update info cards
+    function updateInfoCards(data) {
+      const pollerStatus = document.getElementById('poller-status');
+      const activeWorkers = document.getElementById('active-workers');
+      const messagesSent = document.getElementById('messages-sent');
+      
+      if (pollerStatus) pollerStatus.textContent = data.status || 'Idle';
+      if (activeWorkers) activeWorkers.textContent = data.activeWorkers || '0';
+      if (messagesSent) messagesSent.textContent = data.messagesSent || '0';
+    }
+    
+    // Parse log messages for worker stats
+    let totalMessagesSent = 0;
+    let activeWorkerCount = 0;
+    
+    window.electronAPI.onPythonLog((data) => {
+      const msg = data.trim();
+      addLog(msg, 'info');
+      
+      // Track messages sent
+      if (msg.includes('Message #')) {
+        const match = msg.match(/Message #(\d+)/);
+        if (match) {
+          totalMessagesSent++;
+          updateInfoCards({ 
+            status: 'Sending', 
+            activeWorkers: activeWorkerCount,
+            messagesSent: totalMessagesSent 
+          });
+        }
+      }
+      
+      // Track worker starts
+      if (msg.includes('Started worker') || msg.includes('Auto-started worker')) {
+        activeWorkerCount++;
+        updateInfoCards({ 
+          status: 'Running', 
+          activeWorkers: activeWorkerCount,
+          messagesSent: totalMessagesSent 
+        });
+      }
+      
+      // Track worker completions
+      if (msg.includes('Completed') || msg.includes('Finished with error')) {
+        activeWorkerCount = Math.max(0, activeWorkerCount - 1);
+        updateInfoCards({ 
+          status: activeWorkerCount > 0 ? 'Running' : 'Idle', 
+          activeWorkers: activeWorkerCount,
+          messagesSent: totalMessagesSent 
+        });
+      }
+      
+      // Campaign poller status
+      if (msg.includes('[CampaignPoller]')) {
+        updateInfoCards({ 
+          status: 'Polling', 
+          activeWorkers: activeWorkerCount,
+          messagesSent: totalMessagesSent 
+        });
+      }
     });
     
     init();

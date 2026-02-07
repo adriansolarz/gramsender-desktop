@@ -236,17 +236,37 @@ app.state.connection_manager = connection_manager
 
 @app.on_event("startup")
 async def startup_event():
-    """Start reply monitor in background thread if enabled."""
-    from .config import REPLY_MONITOR_ENABLED
+    """Start background threads on startup."""
+    from .config import REPLY_MONITOR_ENABLED, STORAGE_MODE
+    
+    loop = asyncio.get_running_loop()
+    cm = app.state.connection_manager
+    
+    def broadcast_sync(msg: dict):
+        """Thread-safe broadcast function for background threads."""
+        try:
+            asyncio.run_coroutine_threadsafe(cm.broadcast(msg), loop)
+        except Exception:
+            pass
+    
+    # Start reply monitor if enabled
     if REPLY_MONITOR_ENABLED:
         from .reply_monitor import run_reply_monitor_loop
-        loop = asyncio.get_running_loop()
-        cm = app.state.connection_manager
-        def broadcast_sync(msg: dict):
-            asyncio.run_coroutine_threadsafe(cm.broadcast(msg), loop)
         thread = threading.Thread(target=run_reply_monitor_loop, args=(broadcast_sync,), daemon=True)
         thread.start()
         print("[ReplyMonitor] Background reply monitor started (REPLY_MONITOR_ENABLED=true).")
+    
+    # Start campaign poller if using Supabase
+    if STORAGE_MODE == "supabase":
+        from .campaign_poller import run_campaign_poller
+        poller_thread = threading.Thread(
+            target=run_campaign_poller, 
+            args=(broadcast_sync,), 
+            kwargs={"poll_interval": 10},
+            daemon=True
+        )
+        poller_thread.start()
+        print("[CampaignPoller] Background campaign poller started (polls every 10s for running campaigns).")
 
 
 if __name__ == "__main__":
