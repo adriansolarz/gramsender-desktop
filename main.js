@@ -3,6 +3,27 @@ const path = require('path');
 const { spawn } = require('child_process');
 const fs = require('fs');
 
+// Enable logging to file for debugging
+const logFile = path.join(app.getPath('userData'), 'gramsender.log');
+function log(message) {
+  const timestamp = new Date().toISOString();
+  const logMessage = `[${timestamp}] ${message}\n`;
+  console.log(message);
+  try {
+    fs.appendFileSync(logFile, logMessage);
+  } catch (e) {
+    // Ignore log errors
+  }
+}
+
+// Catch uncaught exceptions
+process.on('uncaughtException', (error) => {
+  log(`Uncaught Exception: ${error.message}\n${error.stack}`);
+  dialog.showErrorBox('Error', `An error occurred: ${error.message}`);
+});
+
+log('App starting...');
+
 // Supabase configuration - hardcoded for security
 const SUPABASE_URL = 'https://hwrxnbvntqcxsaoxfdfg.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh3cnhuYnZudHFjeHNhb3hmZGZnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzAzNTY1MTUsImV4cCI6MjA4NTkzMjUxNX0.7uLU_K8yahphqLkVtJFzQHypK7Q5ySxx4I1U-p1zYB8';
@@ -52,39 +73,74 @@ function clearAuthToken() {
 }
 
 function createWindow() {
-  mainWindow = BrowserWindow({
-    width: 1200,
-    height: 800,
-    minWidth: 900,
-    minHeight: 600,
-    webPreferences: {
-      nodeIntegration: false,
-      contextIsolation: true,
-      preload: path.join(__dirname, 'preload.js')
-    },
-    titleBarStyle: 'default',
-    show: false,
-    backgroundColor: '#0f172a'
-  });
+  log('Creating window...');
+  
+  try {
+    const preloadPath = path.join(__dirname, 'preload.js');
+    log(`Preload path: ${preloadPath}`);
+    log(`Preload exists: ${fs.existsSync(preloadPath)}`);
+    
+    mainWindow = new BrowserWindow({
+      width: 1200,
+      height: 800,
+      minWidth: 900,
+      minHeight: 600,
+      webPreferences: {
+        nodeIntegration: false,
+        contextIsolation: true,
+        preload: preloadPath
+      },
+      titleBarStyle: 'default',
+      show: true,
+      backgroundColor: '#0f172a'
+    });
 
-  // Check if user is already logged in
-  const savedSession = loadAuthToken();
-  if (savedSession && savedSession.access_token) {
-    // Verify token is still valid
-    currentUser = savedSession.user;
-    mainWindow.loadFile('pages/dashboard.html');
-  } else {
-    mainWindow.loadFile('pages/login.html');
+    log('BrowserWindow created');
+
+    // Check if user is already logged in
+    const savedSession = loadAuthToken();
+    log(`Saved session exists: ${!!savedSession}`);
+    
+    let pageToLoad;
+    if (savedSession && savedSession.access_token) {
+      currentUser = savedSession.user;
+      pageToLoad = path.join(__dirname, 'pages', 'dashboard.html');
+    } else {
+      pageToLoad = path.join(__dirname, 'pages', 'login.html');
+    }
+    
+    log(`Loading page: ${pageToLoad}`);
+    log(`Page exists: ${fs.existsSync(pageToLoad)}`);
+    
+    mainWindow.loadFile(pageToLoad).then(() => {
+      log('Page loaded successfully');
+    }).catch((err) => {
+      log(`Failed to load page: ${err.message}`);
+      dialog.showErrorBox('Error', `Failed to load page: ${err.message}`);
+    });
+
+    mainWindow.once('ready-to-show', () => {
+      log('Window ready to show');
+      mainWindow.show();
+      mainWindow.focus();
+    });
+    
+    mainWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription) => {
+      log(`Page failed to load: ${errorCode} - ${errorDescription}`);
+    });
+    
+  } catch (error) {
+    log(`Failed to create window: ${error.message}\n${error.stack}`);
+    dialog.showErrorBox('Error', `Failed to create window: ${error.message}`);
   }
 
-  mainWindow.once('ready-to-show', () => {
-    mainWindow.show();
-  });
-
-  mainWindow.on('closed', () => {
-    mainWindow = null;
-    stopPythonBackend();
-  });
+  if (mainWindow) {
+    mainWindow.on('closed', () => {
+      log('Window closed');
+      mainWindow = null;
+      stopPythonBackend();
+    });
+  }
 }
 
 // Start Python backend with user credentials
@@ -198,7 +254,12 @@ ipcMain.handle('get-backend-status', () => {
 });
 
 // App lifecycle
-app.whenReady().then(createWindow);
+app.whenReady().then(() => {
+  log('App is ready');
+  createWindow();
+}).catch((err) => {
+  log(`App ready failed: ${err.message}`);
+});
 
 app.on('window-all-closed', () => {
   stopPythonBackend();
