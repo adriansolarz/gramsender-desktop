@@ -23,11 +23,17 @@ def run_campaign_poller(broadcast_fn: Callable[[dict], None], poll_interval: int
         return
     
     print(f"[CampaignPoller] Starting campaign poller (interval: {poll_interval}s)")
+    print(f"[CampaignPoller] STORAGE_MODE = {STORAGE_MODE}")
     
     # Track which campaign+account combos have active workers to avoid duplicates
     active_campaign_accounts: Set[str] = set()
     
+    # Wait a bit for the database service to initialize
+    time.sleep(5)
+    
+    poll_count = 0
     while True:
+        poll_count += 1
         try:
             from .services.database import DatabaseService
             from .worker_manager import WorkerManager
@@ -41,6 +47,10 @@ def run_campaign_poller(broadcast_fn: Callable[[dict], None], poll_interval: int
                 cid: c for cid, c in campaigns.items() 
                 if c.get("status") == "running"
             }
+            
+            # Log every 6th poll (every minute) or when there are running campaigns
+            if poll_count % 6 == 0 or running_campaigns:
+                print(f"[CampaignPoller] Poll #{poll_count}: {len(campaigns)} campaigns, {len(running_campaigns)} running")
             
             if not running_campaigns:
                 # Clean up tracking set when no campaigns running

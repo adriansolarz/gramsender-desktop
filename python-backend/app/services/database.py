@@ -13,7 +13,7 @@ import base64
 import json
 from datetime import datetime
 
-from ..config import KEY_FILE, STORAGE_MODE
+from ..config import KEY_FILE, STORAGE_MODE, SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, SUPABASE_ANON_KEY, SUPABASE_USER_ID
 
 class DatabaseService:
     """Service layer for Supabase database operations with multi-tenant support"""
@@ -30,18 +30,21 @@ class DatabaseService:
         if not SUPABASE_AVAILABLE or STORAGE_MODE != "supabase":
             raise ValueError("Supabase not available or STORAGE_MODE is not 'supabase'. Use JSON storage instead.")
         
-        supabase_url = os.getenv("SUPABASE_URL")
-        supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY") or os.getenv("SUPABASE_ANON_KEY")
+        # Use hardcoded values from config (more reliable) or fall back to env vars
+        supabase_url = SUPABASE_URL or os.getenv("SUPABASE_URL")
+        supabase_key = SUPABASE_SERVICE_ROLE_KEY or os.getenv("SUPABASE_SERVICE_ROLE_KEY") or SUPABASE_ANON_KEY or os.getenv("SUPABASE_ANON_KEY")
         
         if not supabase_url or not supabase_key:
             raise ValueError("SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY or SUPABASE_ANON_KEY must be set")
         
+        print(f"[DatabaseService] Connecting to Supabase: {supabase_url[:30]}...")
         self.client = create_client(supabase_url, supabase_key)
         DatabaseService._client = self.client
         DatabaseService._instance = self
         
-        # Set user_id from environment or parameter
-        self._user_id = user_id or os.getenv("SUPABASE_USER_ID")
+        # Set user_id from parameter, config, or environment
+        self._user_id = user_id or SUPABASE_USER_ID or os.getenv("SUPABASE_USER_ID")
+        print(f"[DatabaseService] User ID: {self._user_id[:8] if self._user_id else 'not set'}...")
     
     @classmethod
     def get_instance(cls, user_id: Optional[str] = None):
