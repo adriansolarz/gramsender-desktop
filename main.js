@@ -143,6 +143,57 @@ function createWindow() {
   }
 }
 
+// Find Python executable
+function findPython() {
+  const { execSync } = require('child_process');
+  
+  // List of possible Python commands to try
+  const pythonCommands = process.platform === 'win32' 
+    ? ['python', 'python3', 'py', 'py -3']
+    : ['python3', 'python'];
+  
+  // Common Python installation paths on Windows
+  const windowsPaths = [
+    path.join(process.env.LOCALAPPDATA || '', 'Programs', 'Python', 'Python311', 'python.exe'),
+    path.join(process.env.LOCALAPPDATA || '', 'Programs', 'Python', 'Python310', 'python.exe'),
+    path.join(process.env.LOCALAPPDATA || '', 'Programs', 'Python', 'Python39', 'python.exe'),
+    path.join(process.env.LOCALAPPDATA || '', 'Programs', 'Python', 'Python312', 'python.exe'),
+    path.join(process.env.LOCALAPPDATA || '', 'Programs', 'Python', 'Python313', 'python.exe'),
+    'C:\\Python311\\python.exe',
+    'C:\\Python310\\python.exe',
+    'C:\\Python39\\python.exe',
+    'C:\\Python312\\python.exe',
+  ];
+  
+  // Try commands in PATH first
+  for (const cmd of pythonCommands) {
+    try {
+      const result = execSync(`${cmd} --version`, { 
+        encoding: 'utf8', 
+        timeout: 5000,
+        windowsHide: true,
+        stdio: ['pipe', 'pipe', 'pipe']
+      });
+      log(`Found Python via command '${cmd}': ${result.trim()}`);
+      return cmd;
+    } catch (e) {
+      // Command not found, try next
+    }
+  }
+  
+  // Try absolute paths on Windows
+  if (process.platform === 'win32') {
+    for (const pythonPath of windowsPaths) {
+      if (fs.existsSync(pythonPath)) {
+        log(`Found Python at: ${pythonPath}`);
+        return pythonPath;
+      }
+    }
+  }
+  
+  return null;
+}
+
 // Start Python backend with user credentials
 function startPythonBackend(userId) {
   if (pythonProcess) {
@@ -151,7 +202,23 @@ function startPythonBackend(userId) {
   }
 
   const pythonPath = getResourcePath('python-backend');
-  const pythonExe = process.platform === 'win32' ? 'python.exe' : 'python3';
+  
+  // Find Python executable
+  const pythonExe = findPython();
+  
+  if (!pythonExe) {
+    log('Python not found on system');
+    dialog.showErrorBox(
+      'Python Required',
+      'GramSender requires Python 3.9+ to run.\n\n' +
+      'Please install Python from:\nhttps://www.python.org/downloads/\n\n' +
+      'Make sure to check "Add Python to PATH" during installation.\n\n' +
+      'After installing, restart GramSender.'
+    );
+    return;
+  }
+  
+  log(`Using Python: ${pythonExe}`);
   
   // Set environment variables for the Python process
   const env = {
@@ -169,37 +236,58 @@ function startPythonBackend(userId) {
     const mainPy = path.join(pythonPath, 'run.py');
     
     if (fs.existsSync(mainPy)) {
-      pythonProcess = spawn(pythonExe, [mainPy], {
+      log(`Starting Python backend: ${pythonExe} ${mainPy}`);
+      
+      // Handle 'py -3' command which needs shell
+      const spawnOptions = {
         cwd: pythonPath,
         env: env,
-        stdio: ['pipe', 'pipe', 'pipe']
-      });
+        stdio: ['pipe', 'pipe', 'pipe'],
+        shell: pythonExe.includes(' ')  // Use shell if command has spaces
+      };
+      
+      pythonProcess = spawn(pythonExe, [mainPy], spawnOptions);
 
       pythonProcess.stdout.on('data', (data) => {
-        console.log(`[Python] ${data}`);
+        const msg = data.toString();
+        console.log(`[Python] ${msg}`);
+        log(`[Python] ${msg}`);
         if (mainWindow) {
-          mainWindow.webContents.send('python-log', data.toString());
+          mainWindow.webContents.send('python-log', msg);
         }
       });
 
       pythonProcess.stderr.on('data', (data) => {
-        console.error(`[Python Error] ${data}`);
+        const msg = data.toString();
+        console.error(`[Python Error] ${msg}`);
+        log(`[Python Error] ${msg}`);
         if (mainWindow) {
-          mainWindow.webContents.send('python-error', data.toString());
+          mainWindow.webContents.send('python-error', msg);
         }
       });
 
+      pythonProcess.on('error', (error) => {
+        log(`Python spawn error: ${error.message}`);
+        dialog.showErrorBox(
+          'Python Error',
+          `Failed to start Python backend: ${error.message}\n\n` +
+          'Please ensure Python 3.9+ is installed and in your PATH.'
+        );
+      });
+
       pythonProcess.on('close', (code) => {
-        console.log(`Python process exited with code ${code}`);
+        log(`Python process exited with code ${code}`);
         pythonProcess = null;
       });
 
-      console.log('Python backend started');
+      log('Python backend started');
     } else {
-      console.error('Python backend not found at:', mainPy);
+      log(`Python backend not found at: ${mainPy}`);
+      dialog.showErrorBox('Error', `Python backend files not found.\nExpected: ${mainPy}`);
     }
   } catch (error) {
-    console.error('Failed to start Python backend:', error);
+    log(`Failed to start Python backend: ${error.message}`);
+    dialog.showErrorBox('Error', `Failed to start Python backend: ${error.message}`);
   }
 }
 
