@@ -9,6 +9,14 @@ import threading
 from datetime import datetime
 import uuid
 import os
+import sys
+
+# Force unbuffered output so Electron can see logs immediately
+if hasattr(sys.stdout, 'reconfigure'):
+    sys.stdout.reconfigure(line_buffering=True)
+if hasattr(sys.stderr, 'reconfigure'):
+    sys.stderr.reconfigure(line_buffering=True)
+os.environ['PYTHONUNBUFFERED'] = '1'
 
 # Load environment variables from .env file if it exists
 try:

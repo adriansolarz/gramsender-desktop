@@ -7,16 +7,26 @@ All configuration comes from environment variables set by Electron.
 import os
 import sys
 
-# Add the app directory to path
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+# Handle PyInstaller frozen state
+if getattr(sys, 'frozen', False):
+    # Running as PyInstaller bundle
+    base_dir = os.path.dirname(sys.executable)
+    # Also set the internal temp dir for module imports
+    if hasattr(sys, '_MEIPASS'):
+        base_dir = sys._MEIPASS
+    sys.path.insert(0, base_dir)
+else:
+    # Running as normal Python script
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 def main():
     import uvicorn
     from app.main import app
     
-    print("[GramSender] Starting backend server...")
-    print(f"[GramSender] Storage mode: {os.getenv('STORAGE_MODE', 'json')}")
-    print(f"[GramSender] User ID: {os.getenv('SUPABASE_USER_ID', 'not set')[:8]}...")
+    print("[GramSender] Starting backend server...", flush=True)
+    print(f"[GramSender] Storage mode: {os.getenv('STORAGE_MODE', 'json')}", flush=True)
+    print(f"[GramSender] User ID: {os.getenv('SUPABASE_USER_ID', 'not set')[:8]}...", flush=True)
+    print(f"[GramSender] Frozen: {getattr(sys, 'frozen', False)}", flush=True)
     
     # Run the FastAPI server
     uvicorn.run(

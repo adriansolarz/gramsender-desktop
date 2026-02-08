@@ -70,9 +70,9 @@ def run_campaign_poller(broadcast_fn: Callable[[dict], None], poll_interval: int
                 time.sleep(poll_interval)
                 continue
             
-            # Get assignments to know which accounts are assigned to which campaigns
-            assignments = db.get_assignments()
-            print(f"[CampaignPoller] Found {len(assignments)} assignments: {list(assignments.keys())}")
+            # Get assignments as a list to support one account in multiple campaigns
+            assignments_list = db.get_assignments_list()
+            print(f"[CampaignPoller] Found {len(assignments_list)} assignments")
             
             # Get all accounts with credentials
             accounts = db.get_accounts()
@@ -89,8 +89,8 @@ def run_campaign_poller(broadcast_fn: Callable[[dict], None], poll_interval: int
             for campaign_id, campaign in running_campaigns.items():
                 # Find accounts assigned to this campaign
                 assigned_accounts = [
-                    username for username, cid in assignments.items()
-                    if cid == campaign_id
+                    a["username"] for a in assignments_list
+                    if a["campaign_id"] == campaign_id
                 ]
                 
                 if not assigned_accounts:
@@ -250,7 +250,7 @@ def _start_worker_sync(
         if success:
             worker_info["status"] = "completed"
             print(f"[{username}] Completed. Sent {sent} messages.")
-            campaign_status = "draft"
+            campaign_status = "completed"
         else:
             worker_info["status"] = "error"
             print(f"[{username}] Finished with error.")

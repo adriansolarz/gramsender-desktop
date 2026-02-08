@@ -277,7 +277,9 @@ class DatabaseService:
     
     # Assignments methods
     def get_assignments(self, user_id: Optional[str] = None) -> Dict:
-        """Get all assignments"""
+        """Get all assignments as username -> campaign_id mapping.
+        Note: If an account is assigned to multiple campaigns, returns list format internally.
+        For backward compat, returns username -> campaign_id (last wins for multi-campaign)."""
         try:
             query = self.client.table("assignments").select("*, accounts(username)")
             uid = user_id or self._user_id
@@ -294,6 +296,25 @@ class DatabaseService:
         except Exception as e:
             print(f"Error getting assignments: {e}")
             return {}
+    
+    def get_assignments_list(self, user_id: Optional[str] = None) -> list:
+        """Get all assignments as a list of {username, campaign_id} dicts.
+        Supports one account assigned to multiple campaigns."""
+        try:
+            query = self.client.table("assignments").select("*, accounts(username)")
+            uid = user_id or self._user_id
+            if uid:
+                query = query.eq("user_id", uid)
+            response = query.execute()
+            result = []
+            for row in response.data:
+                username = row.get("username") or (row.get("accounts", {}) or {}).get("username")
+                if username:
+                    result.append({"username": username, "campaign_id": row["campaign_id"]})
+            return result
+        except Exception as e:
+            print(f"Error getting assignments list: {e}")
+            return []
     
     def create_assignment(self, username: str, campaign_id: str, user_id: Optional[str] = None,
                          account_id: Optional[str] = None) -> Optional[Dict]:

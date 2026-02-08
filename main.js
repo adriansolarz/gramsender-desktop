@@ -27,6 +27,7 @@ log('App starting...');
 // Supabase configuration - hardcoded for security
 const SUPABASE_URL = 'https://hwrxnbvntqcxsaoxfdfg.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh3cnhuYnZudHFjeHNhb3hmZGZnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzAzNTY1MTUsImV4cCI6MjA4NTkzMjUxNX0.7uLU_K8yahphqLkVtJFzQHypK7Q5ySxx4I1U-p1zYB8';
+const SUPABASE_SERVICE_ROLE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh3cnhuYnZudHFjeHNhb3hmZGZnIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3MDM1NjUxNSwiZXhwIjoyMDg1OTMyNTE1fQ.HNJ2xkLH49-j8DOp5E4PNy0hbWD4YNOPeTq5_HL3t8g';
 
 let mainWindow;
 let pythonProcess = null;
@@ -175,9 +176,11 @@ function startPythonBackend(userId) {
     STORAGE_MODE: 'supabase',
     SUPABASE_URL: SUPABASE_URL,
     SUPABASE_ANON_KEY: SUPABASE_ANON_KEY,
+    SUPABASE_SERVICE_ROLE_KEY: SUPABASE_SERVICE_ROLE_KEY,
     SUPABASE_USER_ID: userId,
     REPLY_MONITOR_ENABLED: 'true',
-    ANTI_DETECTION_ENABLED: 'true'
+    ANTI_DETECTION_ENABLED: 'true',
+    PYTHONUNBUFFERED: '1'
   };
 
   try {
