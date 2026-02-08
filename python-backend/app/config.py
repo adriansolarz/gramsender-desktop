@@ -53,9 +53,9 @@ GROK_API_BASE = os.getenv("GROK_API_BASE", "https://api.x.ai/v1")
 # Anti-detection (always enabled for desktop app)
 ANTI_DETECTION_ENABLED = os.getenv("ANTI_DETECTION_ENABLED", "true").lower() == "true"
 
-# Lead lookup rate limit
-LEAD_LOOKUP_DELAY_MIN = float(os.getenv("LEAD_LOOKUP_DELAY_MIN", "4"))
-LEAD_LOOKUP_DELAY_MAX = float(os.getenv("LEAD_LOOKUP_DELAY_MAX", "7"))
+# Lead lookup rate limit (seconds between each lead lookup)
+LEAD_LOOKUP_DELAY_MIN = float(os.getenv("LEAD_LOOKUP_DELAY_MIN", "8"))
+LEAD_LOOKUP_DELAY_MAX = float(os.getenv("LEAD_LOOKUP_DELAY_MAX", "15"))
 
 # HttpCloak settings
 HTTPCLOAK_ENABLED = os.getenv("HTTPCLOAK_ENABLED", "false").lower() == "true"

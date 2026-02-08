@@ -363,10 +363,24 @@ def _process_unread_replies_for_account(
 
 
 def run_reply_monitor_loop(broadcast_sync: Optional[Callable[[dict], None]] = None) -> None:
-    """Run forever: get accounts, process unread replies for each, sleep REPLY_POLL_INTERVAL."""
+    """Run forever: get accounts, process unread replies for each, sleep REPLY_POLL_INTERVAL.
+    Skips polling when workers are active to avoid API rate limit conflicts."""
     print("[ReplyMonitor] Started reply monitor loop.")
     while True:
         try:
+            # Skip reply monitoring when workers are actively running to avoid rate limits
+            try:
+                from .worker_manager import WorkerManager
+                wm = WorkerManager.get_instance()
+                active = wm.get_all_workers()
+                running_workers = [w for w in active.values() if w.get("status") in ("starting", "running")]
+                if running_workers:
+                    # Workers are active - skip to avoid Instagram API conflicts
+                    time.sleep(REPLY_POLL_INTERVAL)
+                    continue
+            except Exception:
+                pass
+            
             accounts = _get_accounts_for_monitor()
             if not accounts:
                 time.sleep(REPLY_POLL_INTERVAL)

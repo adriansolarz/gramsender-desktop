@@ -484,8 +484,24 @@ class InstagramWorkerThread(threading.Thread):
                     # Max retries reached
                     self.on_error(f"[{self.account_name}] Max retries reached for {operation_name} after re-login attempts")
                     raise
+            except PleaseWaitFewMinutes as e:
+                last_exception = e
+                wait_time = random.uniform(60, 120)
+                self.on_update(f"[{self.account_name}] Instagram says wait. Pausing {int(wait_time)}s...")
+                time.sleep(wait_time)
+                if attempt < max_retries:
+                    continue
+                raise
             except Exception as e:
-                # For non-LoginRequired exceptions, don't retry
+                error_str = str(e).lower()
+                if "429" in error_str or "too many" in error_str:
+                    last_exception = e
+                    wait_time = random.uniform(45, 90)
+                    self.on_update(f"[{self.account_name}] Rate limited (429). Waiting {int(wait_time)}s...")
+                    time.sleep(wait_time)
+                    if attempt < max_retries:
+                        continue
+                # For other exceptions, don't retry
                 raise
         
         # Should never reach here, but just in case
@@ -867,15 +883,19 @@ class InstagramWorkerThread(threading.Thread):
                             u = line.strip()
                             if u and not u.startswith("#"):
                                 yield u, None
+            consecutive_errors = 0
             for username, lead_row in iterate_rows():
                 if not self.running:
                     return
                 if first_lead:
-                    time.sleep(random.uniform(1.0, 2.5))
+                    time.sleep(random.uniform(2.0, 4.0))
                     first_lead = False
                 else:
-                    delay = random.uniform(LEAD_LOOKUP_DELAY_MIN, LEAD_LOOKUP_DELAY_MAX)
-                    self.debug_log("Lead rate limit", f"Waiting {delay:.1f}s before next lookup")
+                    # Increase delay if we're getting errors (backoff)
+                    base_min = LEAD_LOOKUP_DELAY_MIN + (consecutive_errors * 5)
+                    base_max = LEAD_LOOKUP_DELAY_MAX + (consecutive_errors * 10)
+                    delay = random.uniform(base_min, base_max)
+                    self.debug_log("Lead rate limit", f"Waiting {delay:.1f}s before next lookup (errors: {consecutive_errors})")
                     time.sleep(delay)
                 try:
                     user_info = self.retry_on_login_required(
@@ -885,13 +905,21 @@ class InstagramWorkerThread(threading.Thread):
                         max_retries=2
                     )
                     if user_info:
+                        consecutive_errors = 0  # Reset on success
                         if lead_row is not None:
                             user_info.lead_row = lead_row
                         else:
                             user_info.lead_row = {}
                         yield user_info
                 except Exception as e:
-                    self.debug_log("Lead skip", f"@{username}: {e}")
+                    consecutive_errors += 1
+                    error_str = str(e).lower()
+                    if "429" in error_str or "too many" in error_str or "rate limit" in error_str or "please wait" in error_str:
+                        backoff = min(60 + (consecutive_errors * 30), 300)  # Max 5 min backoff
+                        self.on_update(f"[{self.account_name}] Rate limited by Instagram. Waiting {backoff}s before continuing...")
+                        time.sleep(backoff)
+                    else:
+                        self.debug_log("Lead skip", f"@{username}: {e}")
                     continue
         except Exception as e:
             self.on_error(f"[{self.account_name}] Error reading leads file: {e}")
