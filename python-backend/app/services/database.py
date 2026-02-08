@@ -442,3 +442,68 @@ class DatabaseService:
         except Exception as e:
             print(f"Error getting replies: {e}")
             return []
+    
+    # Conversation history methods
+    def record_conversation(self, account_username: str, recipient_username: str,
+                           direction: str, message_text: str,
+                           campaign_id: str = None, thread_id: str = None,
+                           message_id: str = None, user_id: Optional[str] = None) -> Optional[Dict]:
+        """Record a message in conversation history.
+        direction: 'outbound' (we sent) or 'inbound' (they replied)"""
+        try:
+            uid = user_id or self._user_id
+            data = {
+                "account_username": account_username,
+                "recipient_username": recipient_username,
+                "direction": direction,
+                "message_text": (message_text or "")[:5000],
+                "timestamp": datetime.now().isoformat(),
+            }
+            if uid:
+                data["user_id"] = uid
+            if campaign_id:
+                data["campaign_id"] = campaign_id
+            if thread_id:
+                data["thread_id"] = str(thread_id)
+            if message_id:
+                data["message_id"] = str(message_id)
+            
+            response = self.client.table("conversation_history").insert(data).execute()
+            return response.data[0] if response.data else None
+        except Exception as e:
+            print(f"Error recording conversation: {e}")
+            return None
+    
+    def get_conversation(self, recipient_username: str, limit: int = 50, 
+                        user_id: Optional[str] = None) -> List[Dict]:
+        """Get conversation history with a specific user, ordered chronologically"""
+        try:
+            query = (self.client.table("conversation_history")
+                     .select("*")
+                     .eq("recipient_username", recipient_username)
+                     .order("timestamp", desc=False)
+                     .limit(limit))
+            uid = user_id or self._user_id
+            if uid:
+                query = query.eq("user_id", uid)
+            response = query.execute()
+            return response.data or []
+        except Exception as e:
+            print(f"Error getting conversation for @{recipient_username}: {e}")
+            return []
+    
+    def get_all_conversations(self, limit: int = 100, user_id: Optional[str] = None) -> List[Dict]:
+        """Get recent conversation messages across all recipients"""
+        try:
+            query = (self.client.table("conversation_history")
+                     .select("*")
+                     .order("timestamp", desc=True)
+                     .limit(limit))
+            uid = user_id or self._user_id
+            if uid:
+                query = query.eq("user_id", uid)
+            response = query.execute()
+            return response.data or []
+        except Exception as e:
+            print(f"Error getting conversations: {e}")
+            return []

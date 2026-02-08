@@ -301,6 +301,15 @@ def _start_worker_sync(
                     message_preview=(message_text or "")[:500],
                 )
                 
+                # Record in conversation history
+                db.record_conversation(
+                    account_username=username,
+                    recipient_username=recipient_username or "",
+                    direction="outbound",
+                    message_text=message_text or "",
+                    campaign_id=campaign_id,
+                )
+                
                 # Update campaign messages_sent
                 campaign_data = db.get_campaign(campaign_id)
                 if campaign_data:

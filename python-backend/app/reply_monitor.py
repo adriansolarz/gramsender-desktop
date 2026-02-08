@@ -350,6 +350,22 @@ def _process_unread_replies_for_account(
                 message_id=msg_id,
                 message_type=message_type,
             )
+            # Also record in conversation history
+            if STORAGE_MODE == "supabase":
+                try:
+                    from .services.database import DatabaseService
+                    db = DatabaseService.get_instance()
+                    db.record_conversation(
+                        account_username=username,
+                        recipient_username=replier_username,
+                        direction="inbound",
+                        message_text=reply_text or "",
+                        campaign_id=campaign_id,
+                        thread_id=str(thread_id or ""),
+                        message_id=msg_id,
+                    )
+                except Exception as e:
+                    print(f"[ReplyMonitor] Failed to record conversation: {e}")
             if broadcast_sync:
                 try:
                     broadcast_sync({
