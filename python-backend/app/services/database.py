@@ -84,7 +84,7 @@ class DatabaseService:
         return base64.b64encode(encrypted).decode()
     
     def decrypt(self, encrypted_data: str) -> Optional[str]:
-        """Decrypt sensitive data"""
+        """Decrypt sensitive data. If decryption fails, assumes plaintext (from web frontend)."""
         if not encrypted_data:
             return None
         try:
@@ -93,7 +93,8 @@ class DatabaseService:
             encrypted = base64.b64decode(encrypted_data)
             return fernet.decrypt(encrypted).decode()
         except Exception:
-            return None
+            # Decryption failed - data is likely stored as plaintext from web frontend
+            return encrypted_data
     
     # Accounts methods
     def get_accounts(self, user_id: Optional[str] = None) -> Dict:

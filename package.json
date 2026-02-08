@@ -1,6 +1,6 @@
 {
   "name": "gramsender-desktop",
-  "version": "1.0.11",
+  "version": "1.0.12",
   "description": "GramSender Desktop - Instagram DM Automation",
   "main": "main.js",
   "scripts": {
