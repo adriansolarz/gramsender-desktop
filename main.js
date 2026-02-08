@@ -162,9 +162,43 @@ function getBundledBackendPath() {
 
 // Start Python backend with user credentials
 function startPythonBackend(userId) {
+  // #region agent log
+  const _dl=require('path'),_df=require('fs'),_dp=_dl.normalize(_dl.join(__dirname,'..','..','..','..','instagram-outreach-system-main (3)','.cursor','debug.log'));try{_df.appendFileSync(_dp,JSON.stringify({location:'main.js:startPythonBackend',message:'startPythonBackend called',data:{userId:userId?userId.substring(0,8):'null',pythonProcessExists:!!pythonProcess,callerStack:new Error().stack.split('\n').slice(1,4).map(s=>s.trim())},timestamp:Date.now()})+'\n');}catch(e){}
+  // #endregion
   if (pythonProcess) {
+    // #region agent log
+    try{_df.appendFileSync(_dp,JSON.stringify({location:'main.js:startPythonBackend:guard',message:'BLOCKED - pythonProcess already exists',data:{pid:pythonProcess.pid},timestamp:Date.now(),hypothesisId:'H2'})+'\n');}catch(e){}
+    // #endregion
     console.log('Python backend already running');
     return;
+  }
+
+  // #region agent log
+  try{_df.appendFileSync(_dp,JSON.stringify({location:'main.js:startPythonBackend:proceed',message:'No existing process, proceeding to start',data:{},timestamp:Date.now(),hypothesisId:'H2'})+'\n');}catch(e){}
+  // #endregion
+
+  // Kill any existing process on port 8012 before starting
+  try {
+    const { execSync } = require('child_process');
+    if (process.platform === 'win32') {
+      const result = execSync('netstat -ano | findstr :8012 | findstr LISTENING', { encoding: 'utf8', timeout: 5000, windowsHide: true }).trim();
+      if (result) {
+        const lines = result.split('\n');
+        for (const line of lines) {
+          const parts = line.trim().split(/\s+/);
+          const pid = parts[parts.length - 1];
+          if (pid && pid !== '0') {
+            log(`Killing zombie process on port 8012: PID ${pid}`);
+            // #region agent log
+            try{_df.appendFileSync(_dp,JSON.stringify({location:'main.js:killZombie',message:'Killing zombie process on port 8012',data:{pid,line:line.trim()},timestamp:Date.now(),hypothesisId:'H1'})+'\n');}catch(e){}
+            // #endregion
+            try { execSync(`taskkill /F /PID ${pid}`, { windowsHide: true }); } catch(e) {}
+          }
+        }
+      }
+    }
+  } catch (e) {
+    // No process on port 8012, which is fine
   }
 
   const backendExe = getBundledBackendPath();
@@ -235,11 +269,43 @@ function startPythonBackend(userId) {
 }
 
 function stopPythonBackend() {
+  // #region agent log
+  const _dl2=require('path'),_df2=require('fs'),_dp2=_dl2.normalize(_dl2.join(__dirname,'..','..','..','..','instagram-outreach-system-main (3)','.cursor','debug.log'));try{_df2.appendFileSync(_dp2,JSON.stringify({location:'main.js:stopPythonBackend',message:'stopPythonBackend called',data:{hasProcess:!!pythonProcess,pid:pythonProcess?pythonProcess.pid:null},timestamp:Date.now(),hypothesisId:'H3'})+'\n');}catch(e){}
+  // #endregion
   if (pythonProcess) {
-    pythonProcess.kill();
+    // Kill the process tree on Windows (kills child processes too)
+    try {
+      if (process.platform === 'win32') {
+        const { execSync } = require('child_process');
+        execSync(`taskkill /F /T /PID ${pythonProcess.pid}`, { windowsHide: true });
+      } else {
+        pythonProcess.kill('SIGTERM');
+      }
+    } catch (e) {
+      // Fallback to regular kill
+      try { pythonProcess.kill(); } catch(e2) {}
+    }
     pythonProcess = null;
     console.log('Python backend stopped');
   }
+
+  // Also clean up port 8012 just in case
+  try {
+    const { execSync } = require('child_process');
+    if (process.platform === 'win32') {
+      const result = execSync('netstat -ano | findstr :8012 | findstr LISTENING', { encoding: 'utf8', timeout: 5000, windowsHide: true }).trim();
+      if (result) {
+        const lines = result.split('\n');
+        for (const line of lines) {
+          const parts = line.trim().split(/\s+/);
+          const pid = parts[parts.length - 1];
+          if (pid && pid !== '0') {
+            try { execSync(`taskkill /F /PID ${pid}`, { windowsHide: true }); } catch(e) {}
+          }
+        }
+      }
+    }
+  } catch (e) {}
 }
 
 // IPC Handlers
