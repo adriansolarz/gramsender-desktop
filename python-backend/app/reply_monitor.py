@@ -164,8 +164,49 @@ def _append_reply(
             print(f"[ReplyMonitor] Failed to append replies.csv: {e}")
 
 
+def _get_outreach_recipients() -> set:
+    """Get set of usernames we've sent outreach DMs to (from Supabase sends table or sent_dms.json)."""
+    recipients = set()
+    if STORAGE_MODE == "supabase":
+        try:
+            from .services.database import DatabaseService
+            db = DatabaseService.get_instance()
+            sends = db.get_sends(limit=1000)
+            for send in sends:
+                recipient = send.get("recipient_username", "").strip().lower()
+                if recipient:
+                    recipients.add(recipient)
+        except Exception as e:
+            print(f"[ReplyMonitor] Error fetching outreach list from Supabase: {e}")
+    # Also check local sent_dms.json as fallback
+    with _sent_dms_lock:
+        try:
+            with open(SENT_DMS_FILE, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            for d in data:
+                recipient = (d.get("recipient_username") or "").strip().lower()
+                if recipient:
+                    recipients.add(recipient)
+        except Exception:
+            pass
+    return recipients
+
+
 def _find_campaign_for_recipient(replier_username: str) -> Optional[str]:
-    """Find the most recent campaign_id for a recipient_username from sent_dms.json."""
+    """Find the most recent campaign_id for a recipient_username from Supabase sends or sent_dms.json."""
+    # Check Supabase first
+    if STORAGE_MODE == "supabase":
+        try:
+            from .services.database import DatabaseService
+            db = DatabaseService.get_instance()
+            sends = db.get_sends(limit=500)
+            matching = [s for s in sends if (s.get("recipient_username") or "").strip().lower() == replier_username.strip().lower()]
+            if matching:
+                matching.sort(key=lambda x: x.get("timestamp", ""), reverse=True)
+                return matching[0].get("campaign_id")
+        except Exception:
+            pass
+    # Fallback to local file
     with _sent_dms_lock:
         try:
             with open(SENT_DMS_FILE, "r", encoding="utf-8") as f:
@@ -175,7 +216,6 @@ def _find_campaign_for_recipient(replier_username: str) -> Optional[str]:
     matching = [d for d in data if d.get("recipient_username") == replier_username]
     if not matching:
         return None
-    # Sort by sent_at descending
     matching.sort(key=lambda x: x.get("sent_at", ""), reverse=True)
     return matching[0].get("campaign_id")
 
@@ -240,6 +280,12 @@ def _process_unread_replies_for_account(
     except Exception as e:
         print(f"[ReplyMonitor] direct_threads failed for @{username}: {e}")
         return
+    # Get list of usernames we've already sent outreach DMs to
+    outreach_recipients = _get_outreach_recipients()
+    if not outreach_recipients:
+        # No outreach sent yet, nothing to monitor
+        return
+    
     for thread in (threads or []):
         thread_id = getattr(thread, "id", None) or getattr(thread, "thread_id", None)
         thread_title = getattr(thread, "thread_title", None) or getattr(thread, "title", "") or ""
@@ -277,14 +323,19 @@ def _process_unread_replies_for_account(
             # Only process new messages from the other person (not from us)
             if not is_new or msg_user_id == my_user_id_str:
                 continue
+            replier_username = getattr(msg, "username", None) or ""
+            
+            # Only track replies from people we've sent outreach DMs to
+            if replier_username.strip().lower() not in outreach_recipients:
+                continue
+            
             replied_to = getattr(msg, "replied_to_message", None)
-            message_type = "reply" if replied_to is not None else "inbound"
+            message_type = "reply" if replied_to is not None else "reply"  # All from outreach list are treated as replies
             orig_text = ""
             if replied_to is not None:
                 orig_text = getattr(replied_to, "text", None) or getattr(replied_to, "message", "") or ""
             reply_text = getattr(msg, "text", None) or getattr(msg, "message", "") or ""
             msg_id = str(getattr(msg, "id", "") or getattr(msg, "message_id", "") or "")
-            replier_username = getattr(msg, "username", None) or ""
             campaign_id = _find_campaign_for_recipient(replier_username)
             _append_reply(
                 account_username=username,
@@ -363,24 +414,11 @@ def _process_unread_replies_for_account(
 
 
 def run_reply_monitor_loop(broadcast_sync: Optional[Callable[[dict], None]] = None) -> None:
-    """Run forever: get accounts, process unread replies for each, sleep REPLY_POLL_INTERVAL.
-    Skips polling when workers are active to avoid API rate limit conflicts."""
+    """Run forever: get accounts, check for replies from outreach recipients only, sleep REPLY_POLL_INTERVAL."""
     print("[ReplyMonitor] Started reply monitor loop.")
+    print("[ReplyMonitor] Only monitoring replies from outreach recipients (not random inbounds).")
     while True:
         try:
-            # Skip reply monitoring when workers are actively running to avoid rate limits
-            try:
-                from .worker_manager import WorkerManager
-                wm = WorkerManager.get_instance()
-                active = wm.get_all_workers()
-                running_workers = [w for w in active.values() if w.get("status") in ("starting", "running")]
-                if running_workers:
-                    # Workers are active - skip to avoid Instagram API conflicts
-                    time.sleep(REPLY_POLL_INTERVAL)
-                    continue
-            except Exception:
-                pass
-            
             accounts = _get_accounts_for_monitor()
             if not accounts:
                 time.sleep(REPLY_POLL_INTERVAL)
