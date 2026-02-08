@@ -820,15 +820,30 @@ class InstagramWorkerThread(threading.Thread):
         return all_following
     
     def get_users_from_custom_list(self):
-        """Stream leads from LEADS_DIR: .jsonl (with fullname/firstname mapping) or .txt (username per line). Yields user_info with optional lead_row."""
+        """Stream leads from LEADS_DIR: .jsonl (with fullname/firstname mapping) or .txt (username per line). 
+        Falls back to target_input if no file exists. Yields user_info with optional lead_row."""
         if not self.campaign_id:
             return
         import json as _json
         leads_txt = os.path.join(LEADS_DIR, f"{self.campaign_id}.txt")
         leads_jsonl = os.path.join(LEADS_DIR, f"{self.campaign_id}.jsonl")
+        
+        # If no files exist, try to create from target_input
         if not os.path.exists(leads_txt) and not os.path.exists(leads_jsonl):
-            self.on_update(f"[{self.account_name}] No leads file found for this campaign")
-            return
+            if self.target_input:
+                os.makedirs(LEADS_DIR, exist_ok=True)
+                usernames_list = [u.strip() for u in self.target_input.split(',') if u.strip()]
+                if usernames_list:
+                    with open(leads_txt, 'w', encoding='utf-8') as f:
+                        for u in usernames_list:
+                            f.write(u + '\n')
+                    self.on_update(f"[{self.account_name}] Created leads list with {len(usernames_list)} usernames")
+                else:
+                    self.on_update(f"[{self.account_name}] No leads found in campaign data")
+                    return
+            else:
+                self.on_update(f"[{self.account_name}] No leads file found for this campaign")
+                return
         try:
             first_lead = True
             self.ensure_session_valid()
@@ -922,12 +937,25 @@ class InstagramWorkerThread(threading.Thread):
                 total_users = len(users) if users else 0
             elif self.target_mode == 3:  # Custom list (CSV leads)
                 leads_path = os.path.join(LEADS_DIR, f"{self.campaign_id}.txt") if self.campaign_id else None
-                if not self.campaign_id or not (leads_path and os.path.exists(leads_path)):
-                    self.on_update(f"[{self.account_name}] No leads file. Upload a CSV first.")
+                leads_jsonl = os.path.join(LEADS_DIR, f"{self.campaign_id}.jsonl") if self.campaign_id else None
+                
+                # If no local file exists but target_input has usernames (from web frontend), create the file
+                if self.campaign_id and self.target_input and leads_path and not os.path.exists(leads_path) and not (leads_jsonl and os.path.exists(leads_jsonl)):
+                    os.makedirs(LEADS_DIR, exist_ok=True)
+                    usernames_list = [u.strip() for u in self.target_input.split(',') if u.strip()]
+                    if usernames_list:
+                        with open(leads_path, 'w', encoding='utf-8') as f:
+                            for u in usernames_list:
+                                f.write(u + '\n')
+                        self.lead_count = len(usernames_list)
+                        self.on_update(f"[{self.account_name}] Created leads file with {len(usernames_list)} usernames from campaign data")
+                
+                if not self.campaign_id or not (leads_path and os.path.exists(leads_path)) and not (leads_jsonl and os.path.exists(leads_jsonl)):
+                    self.on_update(f"[{self.account_name}] No leads found. Add usernames to the campaign or upload a CSV.")
                     self.on_complete(success=False)
                     return
                 total_users = self.lead_count or 0
-                self.on_update(f"[{self.account_name}] Processing {total_users} leads from CSV...")
+                self.on_update(f"[{self.account_name}] Processing {total_users} leads...")
                 users = self.get_users_from_custom_list()  # generator
             else:
                 self.on_error(f"[{self.account_name}] Invalid targeting mode")
