@@ -422,8 +422,17 @@ def run_reply_monitor_loop(broadcast_sync: Optional[Callable[[dict], None]] = No
     """Run forever: get accounts, check for replies from outreach recipients only, sleep REPLY_POLL_INTERVAL."""
     print("[ReplyMonitor] Started reply monitor loop.")
     print("[ReplyMonitor] Only monitoring replies from outreach recipients (not random inbounds).")
+    
+    consecutive_errors = 0
     while True:
         try:
+            # Check global rate limit before polling
+            try:
+                from .instagram_worker import check_global_rate_limit
+                check_global_rate_limit()
+            except ImportError:
+                pass
+            
             accounts = _get_accounts_for_monitor()
             if not accounts:
                 time.sleep(REPLY_POLL_INTERVAL)
@@ -431,9 +440,23 @@ def run_reply_monitor_loop(broadcast_sync: Optional[Callable[[dict], None]] = No
             for acc in accounts:
                 try:
                     _process_unread_replies_for_account(acc, broadcast_sync)
+                    consecutive_errors = 0  # Reset on success
                 except Exception as e:
-                    print(f"[ReplyMonitor] Error processing @{acc.get('username', '?')}: {e}")
-                time.sleep(1)
+                    error_str = str(e).lower()
+                    # If 500 or 429 errors, increase backoff
+                    if "500" in error_str or "429" in error_str or "too many" in error_str:
+                        consecutive_errors += 1
+                        backoff = min(REPLY_POLL_INTERVAL + (consecutive_errors * 30), 600)
+                        print(f"[ReplyMonitor] Rate/server error for @{acc.get('username', '?')}. Backing off {backoff}s...")
+                        try:
+                            from .instagram_worker import set_global_rate_limit
+                            set_global_rate_limit(backoff)
+                        except ImportError:
+                            pass
+                        time.sleep(backoff)
+                    else:
+                        print(f"[ReplyMonitor] Error processing @{acc.get('username', '?')}: {e}")
+                time.sleep(2)  # Increased delay between accounts
         except Exception as e:
             print(f"[ReplyMonitor] Loop error: {e}")
         time.sleep(REPLY_POLL_INTERVAL)

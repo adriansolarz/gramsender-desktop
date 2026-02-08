@@ -60,9 +60,9 @@ def run_campaign_poller(broadcast_fn: Callable[[dict], None], poll_interval: int
                 if c.get("status") == "running"
             }
             
-            # Log every 6th poll (every minute) or when there are running campaigns
-            if poll_count % 6 == 0 or running_campaigns:
-                print(f"[CampaignPoller] Poll #{poll_count}: {len(campaigns)} campaigns, {len(running_campaigns)} running")
+            # Only log every 30 polls (5 minutes) to reduce spam
+            if poll_count % 30 == 0:
+                print(f"[CampaignPoller] Status: {len(campaigns)} campaigns, {len(running_campaigns)} running")
             
             if not running_campaigns:
                 # Clean up tracking set when no campaigns running
@@ -72,11 +72,9 @@ def run_campaign_poller(broadcast_fn: Callable[[dict], None], poll_interval: int
             
             # Get assignments as a list to support one account in multiple campaigns
             assignments_list = db.get_assignments_list()
-            print(f"[CampaignPoller] Found {len(assignments_list)} assignments")
             
             # Get all accounts with credentials
             accounts = db.get_accounts()
-            print(f"[CampaignPoller] Found {len(accounts)} accounts: {list(accounts.keys())}")
             
             # Get currently active workers to avoid duplicates
             current_workers = worker_manager.get_all_workers()

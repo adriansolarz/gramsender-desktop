@@ -49,7 +49,8 @@ SQLITE_DB_PATH = os.path.join(_DATA_DIR, "gramsender.db")
 
 # Reply monitor settings
 REPLY_MONITOR_ENABLED = os.getenv("REPLY_MONITOR_ENABLED", "true").lower() == "true"
-REPLY_POLL_INTERVAL = int(os.getenv("REPLY_POLL_INTERVAL", "45"))
+# Increased to reduce Instagram rate limit hits (was 45s, now 120s)
+REPLY_POLL_INTERVAL = int(os.getenv("REPLY_POLL_INTERVAL", "120"))
 
 # Grok API Configuration (optional)
 GROK_API_KEY = os.getenv("GROK_API_KEY", "")
@@ -59,8 +60,9 @@ GROK_API_BASE = os.getenv("GROK_API_BASE", "https://api.x.ai/v1")
 ANTI_DETECTION_ENABLED = os.getenv("ANTI_DETECTION_ENABLED", "true").lower() == "true"
 
 # Lead lookup rate limit (seconds between each lead lookup)
-LEAD_LOOKUP_DELAY_MIN = float(os.getenv("LEAD_LOOKUP_DELAY_MIN", "8"))
-LEAD_LOOKUP_DELAY_MAX = float(os.getenv("LEAD_LOOKUP_DELAY_MAX", "15"))
+# Increased to reduce Instagram rate limit hits
+LEAD_LOOKUP_DELAY_MIN = float(os.getenv("LEAD_LOOKUP_DELAY_MIN", "20"))
+LEAD_LOOKUP_DELAY_MAX = float(os.getenv("LEAD_LOOKUP_DELAY_MAX", "45"))
 
 # HttpCloak settings
 HTTPCLOAK_ENABLED = os.getenv("HTTPCLOAK_ENABLED", "false").lower() == "true"

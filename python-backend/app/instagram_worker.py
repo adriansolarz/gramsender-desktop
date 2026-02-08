@@ -9,6 +9,29 @@ from datetime import datetime
 SENT_DMS_FILE = os.path.join(os.path.dirname(__file__), "sent_dms.json")
 _sent_dms_lock = threading.Lock()
 
+# Global rate limit cooldown - when Instagram returns 429, all operations pause
+_global_rate_limit_lock = threading.Lock()
+_global_rate_limit_until = 0  # Unix timestamp when cooldown ends
+
+def check_global_rate_limit():
+    """Check if we're in global rate limit cooldown. If so, wait."""
+    global _global_rate_limit_until
+    with _global_rate_limit_lock:
+        now = time.time()
+        if now < _global_rate_limit_until:
+            wait_time = _global_rate_limit_until - now
+            print(f"[RateLimit] Global cooldown active. Waiting {int(wait_time)}s...")
+            time.sleep(wait_time)
+            return True
+    return False
+
+def set_global_rate_limit(seconds: int = 120):
+    """Set global rate limit cooldown for all workers."""
+    global _global_rate_limit_until
+    with _global_rate_limit_lock:
+        _global_rate_limit_until = time.time() + seconds
+        print(f"[RateLimit] Global cooldown set for {seconds}s. All operations paused.")
+
 # Monkey-patch to fix instagrapi 2.0.0 compatibility with Pydantic 2.x
 # MUST patch BEFORE importing Client, as Client import triggers mixin imports
 try:
@@ -486,7 +509,8 @@ class InstagramWorkerThread(threading.Thread):
                     raise
             except PleaseWaitFewMinutes as e:
                 last_exception = e
-                wait_time = random.uniform(60, 120)
+                wait_time = random.uniform(120, 180)
+                set_global_rate_limit(int(wait_time))  # Pause all workers
                 self.on_update(f"[{self.account_name}] Instagram says wait. Pausing {int(wait_time)}s...")
                 time.sleep(wait_time)
                 if attempt < max_retries:
@@ -496,7 +520,8 @@ class InstagramWorkerThread(threading.Thread):
                 error_str = str(e).lower()
                 if "429" in error_str or "too many" in error_str:
                     last_exception = e
-                    wait_time = random.uniform(45, 90)
+                    wait_time = random.uniform(90, 150)
+                    set_global_rate_limit(int(wait_time))  # Pause all workers
                     self.on_update(f"[{self.account_name}] Rate limited (429). Waiting {int(wait_time)}s...")
                     time.sleep(wait_time)
                     if attempt < max_retries:
@@ -887,13 +912,17 @@ class InstagramWorkerThread(threading.Thread):
             for username, lead_row in iterate_rows():
                 if not self.running:
                     return
+                    
+                # Check global rate limit before each lead lookup
+                check_global_rate_limit()
+                
                 if first_lead:
-                    time.sleep(random.uniform(2.0, 4.0))
+                    time.sleep(random.uniform(3.0, 6.0))
                     first_lead = False
                 else:
                     # Increase delay if we're getting errors (backoff)
-                    base_min = LEAD_LOOKUP_DELAY_MIN + (consecutive_errors * 5)
-                    base_max = LEAD_LOOKUP_DELAY_MAX + (consecutive_errors * 10)
+                    base_min = LEAD_LOOKUP_DELAY_MIN + (consecutive_errors * 10)
+                    base_max = LEAD_LOOKUP_DELAY_MAX + (consecutive_errors * 20)
                     delay = random.uniform(base_min, base_max)
                     self.debug_log("Lead rate limit", f"Waiting {delay:.1f}s before next lookup (errors: {consecutive_errors})")
                     time.sleep(delay)
@@ -915,7 +944,8 @@ class InstagramWorkerThread(threading.Thread):
                     consecutive_errors += 1
                     error_str = str(e).lower()
                     if "429" in error_str or "too many" in error_str or "rate limit" in error_str or "please wait" in error_str:
-                        backoff = min(60 + (consecutive_errors * 30), 300)  # Max 5 min backoff
+                        backoff = min(120 + (consecutive_errors * 60), 600)  # Max 10 min backoff
+                        set_global_rate_limit(backoff)  # Pause all workers
                         self.on_update(f"[{self.account_name}] Rate limited by Instagram. Waiting {backoff}s before continuing...")
                         time.sleep(backoff)
                     else:
