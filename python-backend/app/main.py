@@ -34,7 +34,7 @@ try:
 except Exception:
     pass
 
-from .routes import campaigns, accounts, workers, assignments, replies, settings
+from .routes import campaigns, accounts, workers, assignments, replies, sends, settings
 from .connection_manager import ConnectionManager
 
 app = FastAPI(title="Instagram Outreach API", version="1.0.0")
@@ -72,7 +72,7 @@ app.add_middleware(RequestLogMiddleware)
 # CORS middleware for React frontend
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://localhost:3001", "http://localhost:5173"],
+    allow_origins=["http://localhost:3000", "http://localhost:3001", "http://localhost:5173", "https://gramsender.com", "https://app.gramsender.com", "https://www.gramsender.com", "https://gramsender.vercel.app"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -87,6 +87,7 @@ app.include_router(accounts.router, prefix="/api/accounts", tags=["accounts"])
 app.include_router(workers.router, prefix="/api/workers", tags=["workers"])
 app.include_router(assignments.router, prefix="/api/assignments", tags=["assignments"])
 app.include_router(replies.router, prefix="/api/replies", tags=["replies"])
+app.include_router(sends.router, prefix="/api/sends", tags=["sends"])
 app.include_router(settings.router, prefix="/api/settings", tags=["settings"])
 
 @app.get("/")
@@ -108,38 +109,11 @@ def _parse_optional_datetime(s):
         return None
 
 
-def _count_sends_in_range(start_dt, end_dt):
-    """Count rows in sends.csv where timestamp is in [start_dt, end_dt] (inclusive)."""
-    from .config import SENDS_CSV
-    if not os.path.isfile(SENDS_CSV):
-        return 0
-    count = 0
-    try:
-        import csv
-        from .routes.workers import SENDS_CSV_HEADER
-        with open(SENDS_CSV, "r", encoding="utf-8", newline="") as f:
-            reader = csv.DictReader(f, fieldnames=SENDS_CSV_HEADER)
-            next(reader, None)  # skip header
-            for row in reader:
-                ts = row.get("timestamp") or ""
-                if not ts or ts == "timestamp":
-                    continue
-                try:
-                    dt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
-                    if start_dt <= dt <= end_dt:
-                        count += 1
-                except ValueError:
-                    continue
-    except Exception:
-        return 0
-    return count
-
-
 @app.get("/api/stats")
 async def get_stats(start: Optional[str] = None, end: Optional[str] = None):
-    """Get dashboard statistics. Optional start/end (ISO date or datetime) filter time-based stats to that range."""
+    """Get dashboard statistics. Uses local SQLite for sends/replies, Supabase for campaigns/accounts."""
     try:
-        from .config import CAMPAIGNS_FILE, ACCOUNTS_FILE, STORAGE_MODE, SENDS_CSV, REPLIES_CSV
+        from .config import CAMPAIGNS_FILE, ACCOUNTS_FILE, STORAGE_MODE
         
         if STORAGE_MODE == "supabase":
             try:
@@ -152,14 +126,11 @@ async def get_stats(start: Optional[str] = None, end: Optional[str] = None):
                 campaigns_data = {}
                 accounts_data = {}
         else:
-            # Load campaigns
             try:
                 with open(CAMPAIGNS_FILE, "r", encoding='utf-8') as f:
                     campaigns_data = json.load(f)
             except:
                 campaigns_data = {}
-            
-            # Load accounts
             try:
                 with open(ACCOUNTS_FILE, "r", encoding='utf-8') as f:
                     accounts_data = json.load(f)
@@ -175,27 +146,21 @@ async def get_stats(start: Optional[str] = None, end: Optional[str] = None):
         from .worker_manager import WorkerManager
         worker_manager = WorkerManager.get_instance()
         active_workers = len(worker_manager.active_workers)
-        # Time range filter: when both start and end provided, filter messages/replies/inbounds to [start, end]
+        
+        # Total messages from local SQLite
+        from .services.local_storage import count_sends_in_range, count_total_sends
         use_range = start is not None and end is not None
         start_dt = _parse_optional_datetime(start) if use_range else None
         end_dt = _parse_optional_datetime(end) if use_range else None
         if use_range and (start_dt is None or end_dt is None):
             use_range = False
-
-        # Total messages = rows in sends.csv (all-time, or in range when filter active)
-        total_messages = 0
+        
         if use_range:
-            total_messages = _count_sends_in_range(start_dt, end_dt)
-        elif os.path.isfile(SENDS_CSV):
-            try:
-                with open(SENDS_CSV, "r", encoding="utf-8") as f:
-                    total_messages = sum(1 for _ in f) - 1  # subtract header row
-                if total_messages < 0:
-                    total_messages = 0
-            except Exception:
-                total_messages = 0
+            total_messages = count_sends_in_range(start_dt, end_dt)
+        else:
+            total_messages = count_total_sends()
 
-        # Replies vs inbounds: today (default) or in [start, end] when filter active
+        # Replies vs inbounds from local SQLite
         total_replies, total_inbounds = replies.count_replies_and_inbounds_in_range(start, end)
         
         return {
@@ -245,7 +210,11 @@ app.state.connection_manager = connection_manager
 @app.on_event("startup")
 async def startup_event():
     """Start background threads on startup."""
-    from .config import REPLY_MONITOR_ENABLED, STORAGE_MODE
+    from .config import REPLY_MONITOR_ENABLED, STORAGE_MODE, SQLITE_DB_PATH
+    
+    # Initialize local SQLite database (sends, replies, conversations stored locally)
+    from .services.local_storage import init as init_local_storage
+    init_local_storage(SQLITE_DB_PATH)
     
     loop = asyncio.get_running_loop()
     cm = app.state.connection_manager

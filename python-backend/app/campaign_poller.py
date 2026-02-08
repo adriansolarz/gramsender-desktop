@@ -285,38 +285,40 @@ def _start_worker_sync(
             "source": "instagrapi",
         })
         
-        # Record to Supabase
+        # Record to local SQLite (sends + conversations stay on device)
+        try:
+            from .services.local_storage import record_send, record_conversation
+            record_send(
+                account_username=username,
+                recipient_username=recipient_username or "",
+                account_name=worker_info.get("account_name", ""),
+                campaign_id=campaign_id,
+                campaign_name=worker_info.get("campaign_name", ""),
+                lead_source=worker_info.get("lead_source", ""),
+                lead_target=target_input,
+                recipient_user_id=str(recipient_user_id) if recipient_user_id else "",
+                message_preview=(message_text or "")[:500],
+            )
+            record_conversation(
+                account_username=username,
+                recipient_username=recipient_username or "",
+                direction="outbound",
+                message_text=message_text or "",
+                campaign_id=campaign_id,
+            )
+        except Exception as e:
+            print(f"[{username}] Failed to record send locally: {e}")
+        
+        # Update campaign messages_sent in Supabase (campaign config still lives there)
         if STORAGE_MODE == "supabase" and DatabaseService:
             try:
                 db = DatabaseService.get_instance()
-                db.record_send(
-                    account_username=username,
-                    recipient_username=recipient_username or "",
-                    account_name=worker_info.get("account_name", ""),
-                    campaign_id=campaign_id,
-                    campaign_name=worker_info.get("campaign_name", ""),
-                    lead_source=worker_info.get("lead_source", ""),
-                    lead_target=target_input,
-                    recipient_user_id=str(recipient_user_id) if recipient_user_id else None,
-                    message_preview=(message_text or "")[:500],
-                )
-                
-                # Record in conversation history
-                db.record_conversation(
-                    account_username=username,
-                    recipient_username=recipient_username or "",
-                    direction="outbound",
-                    message_text=message_text or "",
-                    campaign_id=campaign_id,
-                )
-                
-                # Update campaign messages_sent
                 campaign_data = db.get_campaign(campaign_id)
                 if campaign_data:
                     new_sent = (campaign_data.get("messages_sent") or 0) + 1
                     db.update_campaign(campaign_id, {"messages_sent": new_sent})
             except Exception as e:
-                print(f"[{username}] Failed to record send: {e}")
+                print(f"[{username}] Failed to update campaign count: {e}")
     
     def on_request_challenge_code(username_arg, choice):
         """2FA handler - for now just log and return False (can't handle interactively in poller)"""

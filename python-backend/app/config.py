@@ -42,6 +42,11 @@ LEADS_DIR = os.path.join(_APP_DATA, "leads")
 SENDS_CSV = os.path.join(_APP_DATA, "sends.csv")
 REPLIES_CSV = os.path.join(_APP_DATA, "replies.csv")
 
+# SQLite local storage (sends, replies, conversations stay on device)
+_DATA_DIR = os.path.join(_APP_DATA, "data")
+os.makedirs(_DATA_DIR, exist_ok=True)
+SQLITE_DB_PATH = os.path.join(_DATA_DIR, "gramsender.db")
+
 # Reply monitor settings
 REPLY_MONITOR_ENABLED = os.getenv("REPLY_MONITOR_ENABLED", "true").lower() == "true"
 REPLY_POLL_INTERVAL = int(os.getenv("REPLY_POLL_INTERVAL", "45"))

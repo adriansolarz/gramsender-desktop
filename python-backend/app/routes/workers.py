@@ -290,50 +290,30 @@ async def start_worker(worker_data: dict, background_tasks: BackgroundTasks):
                 "timestamp": datetime.now().isoformat(),
                 "source": "instagrapi",
             })
-            # Append to send-tracking (Supabase or CSV)
+            # Record send to local SQLite (data stays on device)
             message_preview = (message_text or "")[:500]
-            
-            if STORAGE_MODE == "supabase" and DatabaseService:
-                # Write to Supabase
-                try:
-                    db_service = DatabaseService.get_instance()
-                    db_service.record_send(
-                        account_username=worker_info.get("username", ""),
-                        recipient_username=recipient_username or "",
-                        account_name=worker_info.get("account_name", ""),
-                        campaign_id=worker_info.get("campaign_id", ""),
-                        campaign_name=worker_info.get("campaign_name", ""),
-                        lead_source=worker_info.get("lead_source", ""),
-                        lead_target=worker_info.get("target_input", ""),
-                        recipient_user_id=str(recipient_user_id) if recipient_user_id else None,
-                        message_preview=message_preview,
-                    )
-                except Exception as e:
-                    log_terminal(f"Failed to write to Supabase sends: {e}", is_error=True)
-            
-            # Also write to CSV as backup
-            row = (
-                datetime.now().isoformat(),
-                worker_info.get("username", ""),
-                worker_info.get("account_name", ""),
-                worker_info.get("campaign_id", ""),
-                worker_info.get("campaign_name", ""),
-                worker_info.get("lead_source", ""),
-                worker_info.get("target_input", ""),
-                recipient_username or "",
-                recipient_user_id,
-                message_preview,
-            )
-            with _sends_csv_lock:
-                try:
-                    file_exists = os.path.isfile(SENDS_CSV)
-                    with open(SENDS_CSV, "a", newline="", encoding="utf-8") as f:
-                        w = csv.writer(f, quoting=csv.QUOTE_MINIMAL)
-                        if not file_exists:
-                            w.writerow(SENDS_CSV_HEADER)
-                        w.writerow(row)
-                except Exception as e:
-                    log_terminal(f"Failed to write sends.csv: {e}", is_error=True)
+            try:
+                from ..services.local_storage import record_send as local_record_send, record_conversation as local_record_convo
+                local_record_send(
+                    account_username=worker_info.get("username", ""),
+                    recipient_username=recipient_username or "",
+                    account_name=worker_info.get("account_name", ""),
+                    campaign_id=worker_info.get("campaign_id", ""),
+                    campaign_name=worker_info.get("campaign_name", ""),
+                    lead_source=worker_info.get("lead_source", ""),
+                    lead_target=worker_info.get("target_input", ""),
+                    recipient_user_id=str(recipient_user_id) if recipient_user_id else "",
+                    message_preview=message_preview,
+                )
+                local_record_convo(
+                    account_username=worker_info.get("username", ""),
+                    recipient_username=recipient_username or "",
+                    direction="outbound",
+                    message_text=message_text or "",
+                    campaign_id=worker_info.get("campaign_id", ""),
+                )
+            except Exception as e:
+                log_terminal(f"Failed to write to local SQLite: {e}", is_error=True)
             # Update campaign messages_sent so dashboard shows live progress
             with _campaign_messages_sent_lock:
                 try:

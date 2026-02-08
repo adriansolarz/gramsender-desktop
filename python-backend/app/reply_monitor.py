@@ -123,20 +123,34 @@ def _append_reply(
     message_id: str,
     message_type: str = "reply",  # "reply" or "inbound"
 ) -> None:
-    # Write to Supabase if enabled
-    if STORAGE_MODE == "supabase":
-        try:
-            from .services.database import DatabaseService
-            db = DatabaseService.get_instance()
-            db.record_reply(
-                account_username=account_username,
-                sender_username=replier_username,
-                sender_user_id=replier_user_id,
-                message_preview=reply_text,
-                is_inbound=(message_type == "inbound"),
-            )
-        except Exception as e:
-            print(f"[ReplyMonitor] Failed to write to Supabase: {e}")
+    # Write to local SQLite
+    try:
+        from .services.local_storage import record_reply, record_conversation
+        record_reply(
+            account_username=account_username,
+            sender_username=replier_username,
+            account_name=account_name,
+            sender_user_id=replier_user_id,
+            campaign_id=campaign_id,
+            thread_id=str(thread_id or ""),
+            thread_title=thread_title,
+            message_preview=reply_text,
+            replied_to_text=replied_to_text,
+            message_id=message_id,
+            message_type=message_type,
+        )
+        # Also record in conversation history
+        record_conversation(
+            account_username=account_username,
+            recipient_username=replier_username,
+            direction="inbound",
+            message_text=reply_text or "",
+            campaign_id=campaign_id,
+            thread_id=str(thread_id or ""),
+            message_id=message_id,
+        )
+    except Exception as e:
+        print(f"[ReplyMonitor] Failed to write to local SQLite: {e}")
     
     # Also write to CSV as backup
     with _replies_csv_lock:
@@ -165,20 +179,15 @@ def _append_reply(
 
 
 def _get_outreach_recipients() -> set:
-    """Get set of usernames we've sent outreach DMs to (from Supabase sends table or sent_dms.json)."""
+    """Get set of usernames we've sent outreach DMs to (from local SQLite or sent_dms.json fallback)."""
     recipients = set()
-    if STORAGE_MODE == "supabase":
-        try:
-            from .services.database import DatabaseService
-            db = DatabaseService.get_instance()
-            sends = db.get_sends(limit=1000)
-            for send in sends:
-                recipient = send.get("recipient_username", "").strip().lower()
-                if recipient:
-                    recipients.add(recipient)
-        except Exception as e:
-            print(f"[ReplyMonitor] Error fetching outreach list from Supabase: {e}")
-    # Also check local sent_dms.json as fallback
+    # Primary: local SQLite
+    try:
+        from .services.local_storage import get_outreach_recipients
+        recipients = get_outreach_recipients()
+    except Exception as e:
+        print(f"[ReplyMonitor] Error fetching outreach list from SQLite: {e}")
+    # Fallback: also check local sent_dms.json
     with _sent_dms_lock:
         try:
             with open(SENT_DMS_FILE, "r", encoding="utf-8") as f:
@@ -193,19 +202,15 @@ def _get_outreach_recipients() -> set:
 
 
 def _find_campaign_for_recipient(replier_username: str) -> Optional[str]:
-    """Find the most recent campaign_id for a recipient_username from Supabase sends or sent_dms.json."""
-    # Check Supabase first
-    if STORAGE_MODE == "supabase":
-        try:
-            from .services.database import DatabaseService
-            db = DatabaseService.get_instance()
-            sends = db.get_sends(limit=500)
-            matching = [s for s in sends if (s.get("recipient_username") or "").strip().lower() == replier_username.strip().lower()]
-            if matching:
-                matching.sort(key=lambda x: x.get("timestamp", ""), reverse=True)
-                return matching[0].get("campaign_id")
-        except Exception:
-            pass
+    """Find the most recent campaign_id for a recipient_username from local SQLite or sent_dms.json."""
+    # Check local SQLite first
+    try:
+        from .services.local_storage import find_campaign_for_recipient
+        cid = find_campaign_for_recipient(replier_username)
+        if cid:
+            return cid
+    except Exception:
+        pass
     # Fallback to local file
     with _sent_dms_lock:
         try:
@@ -350,22 +355,6 @@ def _process_unread_replies_for_account(
                 message_id=msg_id,
                 message_type=message_type,
             )
-            # Also record in conversation history
-            if STORAGE_MODE == "supabase":
-                try:
-                    from .services.database import DatabaseService
-                    db = DatabaseService.get_instance()
-                    db.record_conversation(
-                        account_username=username,
-                        recipient_username=replier_username,
-                        direction="inbound",
-                        message_text=reply_text or "",
-                        campaign_id=campaign_id,
-                        thread_id=str(thread_id or ""),
-                        message_id=msg_id,
-                    )
-                except Exception as e:
-                    print(f"[ReplyMonitor] Failed to record conversation: {e}")
             if broadcast_sync:
                 try:
                     broadcast_sync({
